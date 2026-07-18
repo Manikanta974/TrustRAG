@@ -20,6 +20,7 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+*.egg-info/
 
 # Generated or sensitive local data
 uploads/

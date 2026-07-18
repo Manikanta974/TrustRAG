@@ -1,0 +1,16 @@
+services:
+  postgres:
+    # Local development placeholder. No schema, Supabase services, or application
+    # dependency is wired yet; migrations will be introduced in a later phase.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trustrag}
+      POSTGRES_USER: ${POSTGRES_USER:-trustrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

@@ -60,4 +60,4 @@ Maintain the full security invariants in `docs/SECURITY_MODEL.md`: derive tenant
 
 ## Current repository state
 
-The repository currently contains planning and setup documentation only. Do not scaffold the application until a future task explicitly begins the appropriate build phase.
+The repository contains the initial frontend/backend foundation only: a Next.js shell, FastAPI health endpoint, and empty Supabase migration/seed directories. Authentication, database models and migrations, document handling, retrieval, LLM integration, and administrative features remain deferred until their documented phases.

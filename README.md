@@ -2,7 +2,7 @@
 
 TrustRAG is a secure enterprise RAG platform for internal documents. It lets authenticated employees upload and query private knowledge while enforcing role- and department-based access **before retrieval and LLM generation**. Every answer is grounded in authorized source material, cited, audited, and refused when evidence is insufficient.
 
-This repository intentionally contains planning and project-setup material only. It does not yet contain an application scaffold or runtime implementation.
+This repository contains the Phase 1 foundation: a Next.js frontend shell, a FastAPI health-check service, and placeholders for future Supabase migrations/seeds. Authentication, persistence, document handling, RAG, and LLM integrations are intentionally not implemented yet.
 
 ## Target stack
 
@@ -37,11 +37,46 @@ This repository intentionally contains planning and project-setup material only.
 ## Future repository shape
 
 ```text
-apps/web/              Next.js frontend (future)
-services/api/          FastAPI backend (future)
-packages/              Shared contracts/configuration (future)
-infra/                 Database, Supabase, and deployment configuration (future)
+apps/web/              Next.js + TypeScript + Tailwind frontend shell
+services/api/          FastAPI service foundation and pytest health test
+supabase/migrations/   Future version-controlled database migrations
+supabase/seed/         Future synthetic development seed data
 docs/                  Product and implementation context
 ```
 
-Copy `.env.example` to `.env` when implementation begins. Never commit secrets, service-role keys, private documents, extraction output, or production data.
+## Local setup
+
+Prerequisites: Node.js 20.9+, Python 3.11+, and optionally Docker for the future local pgvector placeholder.
+
+1. Copy `.env.example` to `.env`. It contains placeholders only; do not add real secrets to version control.
+2. Install frontend dependencies from the repository root:
+
+   ```bash
+   npm install
+   npm run dev:web
+   ```
+
+   The web shell runs at `http://localhost:3000` by default.
+
+3. Set up and run the backend from `services/api`:
+
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   python -m pip install --upgrade pip
+   python -m pip install -e ".[dev]"
+   python -m uvicorn app.main:app --reload --port 8000
+   ```
+
+   Check `http://localhost:8000/health`; it returns `{"status":"ok","service":"trustrag-api"}`.
+
+4. Run the current backend checks:
+
+   ```bash
+   python -m pytest
+   python -m ruff check app
+   ```
+
+`docker compose up postgres` starts an empty local pgvector-enabled PostgreSQL placeholder. No app service uses it yet, and no Supabase/Auth/Storage services are configured at this phase.
+
+Never commit secrets, service-role keys, private documents, extraction output, or production data.
