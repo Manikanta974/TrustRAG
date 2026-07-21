@@ -234,6 +234,10 @@ create table document_chunks (
     page_number integer,
     start_offset integer,
     end_offset integer,
+    -- Basic ingestion-time guardrail findings (docs/SECURITY_MODEL.md PII/secret
+    -- handling); categories only, never raw matched values.
+    contains_sensitive_data boolean not null default false,
+    sensitive_data_categories text[] not null default '{}',
     created_at timestamptz not null default now()
 );
 

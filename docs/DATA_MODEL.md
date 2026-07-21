@@ -17,7 +17,7 @@ PostgreSQL is the system of record. All application tables include `organization
 | `documents` | `id`, `organization_id`, `owner_profile_id`, `title`, `description`, `status`, `classification` | Logical document across versions |
 | `document_versions` | `id`, `organization_id`, `document_id`, `version_number`, `storage_key`, `sha256`, `original_filename`, `mime_type`, `file_size_bytes`, `status` | Immutable upload/extraction lifecycle; `sha256` is populated once the ingestion worker hashes the stored file |
 | `document_acl` | `id`, `organization_id`, `document_id`, `principal_type`, `principal_id`, `permission` | `principal_type`: user, department, group, role; `principal_id` references `profiles`/`departments`/`groups`/`organization_roles` accordingly; first permission is `read` |
-| `document_chunks` | `id`, `organization_id`, `document_version_id`, `content`, `embedding`, `embedding_model`, `embedding_version`, `page_number`, `start_offset`, `end_offset` | Only ready versions are searched |
+| `document_chunks` | `id`, `organization_id`, `document_version_id`, `content`, `embedding`, `embedding_model`, `embedding_version`, `page_number`, `start_offset`, `end_offset`, `contains_sensitive_data`, `sensitive_data_categories` | Only ready versions are searched; sensitive-data fields are category flags only, never raw matched values |
 | `conversations` | `id`, `organization_id`, `profile_id`, `title` | Groups related question/answer turns |
 | `messages` | `id`, `organization_id`, `conversation_id`, `role`, `content` | `role`: user, assistant, system |
 | `query_runs` | `id`, `organization_id`, `profile_id`, `conversation_id`, `question_hash`, `outcome`, `model_config` | Store raw text only under approved retention policy |

@@ -15,6 +15,7 @@ from app.schemas.documents import (
     IngestTextResponse,
 )
 from app.schemas.membership import CurrentMembership
+from app.services.guardrails import scan_prompt_injection, scan_sensitive_data
 
 
 class DocumentNotFoundError(Exception):
@@ -35,6 +36,22 @@ class DocumentIngestConflictError(Exception):
 
 class InvalidIngestContentError(Exception):
     """Content is empty after normalization."""
+
+
+class PromptInjectionDetectedError(Exception):
+    """Content matched high-risk prompt-injection patterns; version quarantined."""
+
+    def __init__(self, reason_codes: list[str]) -> None:
+        super().__init__(",".join(reason_codes))
+        self.reason_codes = reason_codes
+
+
+class SensitiveDataBlockedError(Exception):
+    """Content matched high-confidence secret patterns; version quarantined."""
+
+    def __init__(self, categories: list[str]) -> None:
+        super().__init__(",".join(categories))
+        self.categories = categories
 
 # Note: document_acl.principal_type has no 'organization' value in the migration
 # (docs/DATA_MODEL.md / supabase/migrations/20260718000000_core_schema.sql); only
@@ -299,6 +316,43 @@ def _chunk_text(content: str, words_per_chunk: int = CHUNK_WORDS) -> list[tuple[
     return chunks
 
 
+def _quarantine_version(db: Session, version_id: UUID) -> None:
+    db.execute(
+        text(
+            "update document_versions set status = 'quarantined', updated_at = now() "
+            "where id = :version_id"
+        ),
+        {"version_id": version_id},
+    )
+
+
+def _record_security_event(
+    db: Session,
+    membership: CurrentMembership,
+    *,
+    resource_id: UUID,
+    detector: str,
+    severity: str,
+    reason_code: str,
+) -> None:
+    db.execute(
+        text(
+            "insert into security_events "
+            "(organization_id, resource_type, resource_id, detector, severity, "
+            "reason_code, status) "
+            "values (:organization_id, 'document_version', :resource_id, :detector, :severity, "
+            ":reason_code, 'open')"
+        ),
+        {
+            "organization_id": membership.organization_id,
+            "resource_id": resource_id,
+            "detector": detector,
+            "severity": severity,
+            "reason_code": reason_code,
+        },
+    )
+
+
 def _has_management_grant(db: Session, membership: CurrentMembership, document: dict) -> bool:
     """Owner/user/department/group/role grant check, deliberately without the
     ready-version gate used by check_document_access: managing a pending
@@ -383,15 +437,56 @@ def ingest_text(
     if not normalized:
         raise InvalidIngestContentError()
 
-    chunks = _chunk_text(normalized)
+    # Whole-text scan: injection phrases can span chunk boundaries and the
+    # document is untrusted regardless of how it will later be split
+    # (docs/SECURITY_MODEL.md "documents are untrusted data").
+    injection_result = scan_prompt_injection(normalized)
+    if injection_result.is_high_risk:
+        _quarantine_version(db, version["id"])
+        _record_security_event(
+            db,
+            membership,
+            resource_id=version["id"],
+            detector="prompt_injection_heuristics",
+            severity="critical",
+            reason_code=",".join(injection_result.reason_codes),
+        )
+        db.commit()
+        raise PromptInjectionDetectedError(injection_result.reason_codes)
 
-    for chunk_content, start_offset, end_offset in chunks:
+    chunks = _chunk_text(normalized)
+    chunk_findings = [
+        (chunk_content, start_offset, end_offset, scan_sensitive_data(chunk_content))
+        for chunk_content, start_offset, end_offset in chunks
+    ]
+    all_categories = sorted(
+        {category for *_, result in chunk_findings for category in result.categories}
+    )
+    has_high_risk_secrets = any(result.has_high_risk_findings for *_, result in chunk_findings)
+
+    # High-confidence secrets block the whole version (SECURITY_MODEL.md
+    # "quarantine: prevent indexing until reviewed"); no chunks are created.
+    if has_high_risk_secrets:
+        _quarantine_version(db, version["id"])
+        _record_security_event(
+            db,
+            membership,
+            resource_id=version["id"],
+            detector="pii_secret_scanner",
+            severity="high",
+            reason_code=",".join(all_categories),
+        )
+        db.commit()
+        raise SensitiveDataBlockedError(all_categories)
+
+    for chunk_content, start_offset, end_offset, sensitive_result in chunk_findings:
         db.execute(
             text(
                 "insert into document_chunks "
                 "(organization_id, document_version_id, content, page_number, "
-                "start_offset, end_offset) "
-                "values (:organization_id, :version_id, :content, 1, :start_offset, :end_offset)"
+                "start_offset, end_offset, contains_sensitive_data, sensitive_data_categories) "
+                "values (:organization_id, :version_id, :content, 1, :start_offset, :end_offset, "
+                ":contains_sensitive_data, :categories)"
             ),
             {
                 "organization_id": membership.organization_id,
@@ -399,7 +494,21 @@ def ingest_text(
                 "content": chunk_content,
                 "start_offset": start_offset,
                 "end_offset": end_offset,
+                "contains_sensitive_data": sensitive_result.has_findings,
+                "categories": sensitive_result.categories,
             },
+        )
+
+    # Lower-risk general PII (email/phone) does not block ingestion: masking
+    # is a later phase, so we flag and record rather than reject.
+    if all_categories:
+        _record_security_event(
+            db,
+            membership,
+            resource_id=version["id"],
+            detector="pii_secret_scanner",
+            severity="medium",
+            reason_code=",".join(all_categories),
         )
 
     db.execute(
