@@ -1,13 +1,18 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.documents import DocumentAccessResponse, DocumentSummary
+from app.schemas.documents import (
+    DocumentAccessResponse,
+    DocumentCreateRequest,
+    DocumentCreateResponse,
+    DocumentSummary,
+)
 from app.schemas.membership import CurrentMembership
 from app.services.auth import get_current_membership
-from app.services.documents import check_document_access, list_accessible_documents
+from app.services.documents import check_document_access, create_document, list_accessible_documents
 
 router = APIRouter()
 
@@ -18,6 +23,23 @@ def list_documents(
     db: Session = Depends(get_db),
 ) -> list[DocumentSummary]:
     return list_accessible_documents(db, membership)
+
+
+@router.post(
+    "/documents",
+    response_model=DocumentCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["documents"],
+)
+def create_document_endpoint(
+    payload: DocumentCreateRequest,
+    membership: CurrentMembership = Depends(get_current_membership),
+    db: Session = Depends(get_db),
+) -> DocumentCreateResponse:
+    try:
+        return create_document(db, membership, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get(

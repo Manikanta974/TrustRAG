@@ -3,7 +3,12 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.schemas.documents import DocumentAccessResponse, DocumentSummary
+from app.schemas.documents import (
+    DocumentAccessResponse,
+    DocumentCreateRequest,
+    DocumentCreateResponse,
+    DocumentSummary,
+)
 from app.schemas.membership import CurrentMembership
 
 # Note: document_acl.principal_type has no 'organization' value in the migration
@@ -144,4 +149,108 @@ def check_document_access(
         document_id=document_id,
         allowed=True,
         reason=reason_by_principal_type[grant["principal_type"]],
+    )
+
+
+def create_document(
+    db: Session, membership: CurrentMembership, payload: DocumentCreateRequest
+) -> DocumentCreateResponse:
+    """Create document + version metadata only (no file bytes, no storage,
+    no scanning/parsing). Raises ValueError on an invalid department_id,
+    which the caller must translate to 422.
+    """
+    if payload.department_id is not None:
+        department_exists = db.execute(
+            text(
+                "select exists (select 1 from departments "
+                "where id = :department_id and organization_id = :organization_id)"
+            ),
+            {
+                "department_id": payload.department_id,
+                "organization_id": membership.organization_id,
+            },
+        ).scalar()
+        if not department_exists:
+            raise ValueError("department_id does not belong to the caller's organization")
+
+    document = (
+        db.execute(
+            text(
+                "insert into documents "
+                "(organization_id, owner_profile_id, title, description, status, classification) "
+                "values (:organization_id, :owner_profile_id, :title, :description, "
+                "'active', :classification) "
+                "returning id, title, description, status, classification, created_at, updated_at"
+            ),
+            {
+                "organization_id": membership.organization_id,
+                "owner_profile_id": membership.profile_id,
+                "title": payload.title,
+                "description": payload.description,
+                "classification": payload.classification,
+            },
+        )
+        .mappings()
+        .first()
+    )
+
+    storage_key = (
+        f"{membership.organization_id}/documents/{document['id']}/v1/{payload.original_filename}"
+    )
+    # Version status is 'pending', not 'processing' or 'ready': no malware scan,
+    # parsing, or PII/injection detection has run yet (those are later ingestion
+    # phases). 'ready' would violate SECURITY_MODEL.md's "unsafe documents cannot
+    # silently become LLM context"; 'processing' would falsely claim a pipeline
+    # step already started. 'pending' matches the actual, documented first stage
+    # of the document_versions lifecycle (docs/DATA_MODEL.md).
+    version = (
+        db.execute(
+            text(
+                "insert into document_versions "
+                "(organization_id, document_id, version_number, storage_key, "
+                "original_filename, mime_type, file_size_bytes, status) "
+                "values (:organization_id, :document_id, 1, :storage_key, "
+                ":original_filename, :mime_type, :file_size_bytes, 'pending') "
+                "returning id, version_number, status"
+            ),
+            {
+                "organization_id": membership.organization_id,
+                "document_id": document["id"],
+                "storage_key": storage_key,
+                "original_filename": payload.original_filename,
+                "mime_type": payload.mime_type,
+                "file_size_bytes": payload.file_size_bytes,
+            },
+        )
+        .mappings()
+        .first()
+    )
+
+    if payload.department_id is not None:
+        db.execute(
+            text(
+                "insert into document_acl "
+                "(organization_id, document_id, principal_type, principal_id, permission) "
+                "values (:organization_id, :document_id, 'department', :department_id, 'read')"
+            ),
+            {
+                "organization_id": membership.organization_id,
+                "document_id": document["id"],
+                "department_id": payload.department_id,
+            },
+        )
+
+    db.commit()
+
+    return DocumentCreateResponse(
+        id=document["id"],
+        title=document["title"],
+        description=document["description"],
+        status=document["status"],
+        classification=document["classification"],
+        created_at=document["created_at"],
+        updated_at=document["updated_at"],
+        version_id=version["id"],
+        version_number=version["version_number"],
+        version_status=version["status"],
     )
