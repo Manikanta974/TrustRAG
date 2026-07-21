@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_name: str = "TrustRAG API"
     environment: str = "development"
     log_level: str = "INFO"
+    database_url: str = "postgresql://trustrag:local-development-only@localhost:5432/trustrag"
 
 
 @lru_cache
