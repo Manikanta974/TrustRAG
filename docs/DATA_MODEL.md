@@ -8,14 +8,15 @@ PostgreSQL is the system of record. All application tables include `organization
 | --- | --- | --- |
 | `organizations` | `id`, `name`, `status` | Organization boundary (tenant) |
 | `profiles` | `id`, `organization_id`, `supabase_user_id`, `email`, `status` | Maps verified identity to application organization |
-| `organization_memberships` | `id`, `organization_id`, `profile_id`, `role`, `status` | Role grant, e.g. employee, document_owner, department_manager, security_admin, platform_admin |
+| `organization_roles` | `id`, `organization_id`, `name`, `display_name`, `description` | Per-organization role catalog; also a document_acl principal_type target |
+| `organization_memberships` | `id`, `organization_id`, `profile_id`, `role_id`, `status` | Role grant, referencing `organization_roles` |
 | `departments` | `id`, `organization_id`, `name` | Department access principal |
 | `department_memberships` | `id`, `organization_id`, `department_id`, `profile_id`, `status` | Active membership is required for a grant |
 | `groups` | `id`, `organization_id`, `name` | Ad-hoc access principal distinct from department/role grants |
 | `group_members` | `id`, `organization_id`, `group_id`, `profile_id` | Group membership |
 | `documents` | `id`, `organization_id`, `owner_profile_id`, `title`, `status`, `classification` | Logical document across versions |
 | `document_versions` | `id`, `organization_id`, `document_id`, `version_number`, `storage_key`, `sha256`, `status` | Immutable upload/extraction lifecycle |
-| `document_acl` | `id`, `organization_id`, `document_id`, `principal_type`, `principal_id`, `permission` | `principal_type`: user, department, group, role; first permission is `read` |
+| `document_acl` | `id`, `organization_id`, `document_id`, `principal_type`, `principal_id`, `permission` | `principal_type`: user, department, group, role; `principal_id` references `profiles`/`departments`/`groups`/`organization_roles` accordingly; first permission is `read` |
 | `document_chunks` | `id`, `organization_id`, `document_version_id`, `content`, `embedding`, `embedding_model`, `embedding_version`, `page_number`, `start_offset`, `end_offset` | Only ready versions are searched |
 | `conversations` | `id`, `organization_id`, `profile_id`, `title` | Groups related question/answer turns |
 | `messages` | `id`, `organization_id`, `conversation_id`, `role`, `content` | `role`: user, assistant, system |

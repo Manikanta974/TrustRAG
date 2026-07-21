@@ -49,24 +49,41 @@ create table profiles (
 create index idx_profiles_organization_id on profiles (organization_id);
 create index idx_profiles_status on profiles (status);
 
+-- Roles are data, scoped per organization, so both organization_memberships and
+-- document_acl (principal_type = 'role') can reference a real row instead of a
+-- fixed/enumerated value. Seed or admin tooling is expected to provision the
+-- baseline roles (e.g. admin, manager, employee, intern) per organization.
+create table organization_roles (
+    id uuid primary key default gen_random_uuid(),
+    organization_id uuid not null references organizations (id) on delete cascade,
+    name text not null,
+    display_name text,
+    description text,
+    created_at timestamptz not null default now(),
+    unique (organization_id, name)
+);
+
+create index idx_organization_roles_organization_id on organization_roles (organization_id);
+
 -- Role grants are always scoped to one organization membership; an application
--- role never implies access outside the caller's own organization.
+-- role never implies access outside the caller's own organization. role_id must
+-- reference an organization_roles row of the same organization_id; FastAPI
+-- validates this on write since it spans two FKs rather than one composite key.
 create table organization_memberships (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references organizations (id) on delete cascade,
     profile_id uuid not null references profiles (id) on delete cascade,
-    role text not null
-        check (role in ('employee', 'document_owner', 'department_manager', 'security_admin', 'platform_admin')),
+    role_id uuid not null references organization_roles (id),
     status text not null default 'active'
         check (status in ('active', 'revoked')),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    unique (organization_id, profile_id, role)
+    unique (organization_id, profile_id, role_id)
 );
 
 create index idx_org_memberships_organization_id on organization_memberships (organization_id);
 create index idx_org_memberships_profile_id on organization_memberships (profile_id);
-create index idx_org_memberships_role on organization_memberships (role);
+create index idx_org_memberships_role_id on organization_memberships (role_id);
 create index idx_org_memberships_status on organization_memberships (status);
 
 create table departments (
@@ -167,11 +184,11 @@ create index idx_document_versions_organization_id on document_versions (organiz
 create index idx_document_versions_document_id on document_versions (document_id);
 create index idx_document_versions_status on document_versions (status);
 
--- Polymorphic grant: principal_id refers to profiles/departments/groups/
--- organization_memberships.role depending on principal_type. No DB-level FK is
--- possible across those targets; FastAPI must validate principal existence and
--- re-check this table on every retrieval and citation resolution, never trust
--- it as a cached decision.
+-- Polymorphic grant: principal_id refers to profiles.id, departments.id,
+-- groups.id, or organization_roles.id depending on principal_type. No DB-level
+-- FK is possible across those targets; FastAPI must validate principal
+-- existence and re-check this table on every retrieval and citation
+-- resolution, never trust it as a cached decision.
 create table document_acl (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references organizations (id) on delete cascade,
