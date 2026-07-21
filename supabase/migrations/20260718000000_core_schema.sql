@@ -20,9 +20,12 @@ create extension if not exists vector;
 -- Tenancy and identity
 -- ---------------------------------------------------------------------------
 
+-- slug is a stable, URL/header-safe organization identifier distinct from the
+-- display name; used to resolve organization context from request headers.
 create table organizations (
     id uuid primary key default gen_random_uuid(),
     name text not null,
+    slug text not null unique,
     status text not null default 'active'
         check (status in ('active', 'suspended', 'deleted')),
     created_at timestamptz not null default now(),

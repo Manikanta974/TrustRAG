@@ -6,7 +6,7 @@ PostgreSQL is the system of record. All application tables include `organization
 
 | Entity | Key fields | Notes |
 | --- | --- | --- |
-| `organizations` | `id`, `name`, `status` | Organization boundary (tenant) |
+| `organizations` | `id`, `name`, `slug`, `status` | Organization boundary (tenant); `slug` is a stable header/URL-safe identifier |
 | `profiles` | `id`, `organization_id`, `supabase_user_id`, `email`, `status` | Maps verified identity to application organization |
 | `organization_roles` | `id`, `organization_id`, `name`, `display_name`, `description` | Per-organization role catalog; also a document_acl principal_type target |
 | `organization_memberships` | `id`, `organization_id`, `profile_id`, `role_id`, `status` | Role grant, referencing `organization_roles` |
