@@ -154,6 +154,7 @@ create table documents (
     organization_id uuid not null references organizations (id) on delete cascade,
     owner_profile_id uuid not null references profiles (id),
     title text not null,
+    description text,
     status text not null default 'active'
         check (status in ('active', 'archived', 'deleted')),
     -- Additive classification hook per docs/SECURITY_MODEL.md; does not by
@@ -169,13 +170,18 @@ create index idx_documents_status on documents (status);
 
 -- Immutable per docs/DATA_MODEL.md: a new upload creates a new version row,
 -- never overwrites a prior one. Only status = 'ready' is ever retrievable.
+-- sha256 is nullable: it is populated once the ingestion worker has the actual
+-- file bytes (scan/parse phase), not at metadata-only creation time.
 create table document_versions (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references organizations (id) on delete cascade,
     document_id uuid not null references documents (id) on delete cascade,
     version_number integer not null,
     storage_key text not null,
-    sha256 text not null,
+    sha256 text,
+    original_filename text not null,
+    mime_type text not null,
+    file_size_bytes bigint not null,
     status text not null default 'pending'
         check (status in ('pending', 'scanning', 'processing', 'ready', 'quarantined', 'failed', 'deleted')),
     created_at timestamptz not null default now(),

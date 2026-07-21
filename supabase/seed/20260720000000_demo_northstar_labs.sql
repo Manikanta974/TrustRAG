@@ -108,13 +108,13 @@ on conflict (id) do nothing;
 
 -- Only version 6 is 'quarantined': demonstrates that a quarantined version has
 -- no retrievable chunks regardless of any document_acl grant (docs/BUILD_PHASES.md Phase 2 exit criteria).
-insert into document_versions (id, organization_id, document_id, version_number, storage_key, sha256, status) values
-    ('81000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', 1, 'northstar-labs/documents/employee-handbook/v1.pdf', encode(digest('employee-handbook-v1', 'sha256'), 'hex'), 'ready'),
-    ('81000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000002', 1, 'northstar-labs/documents/leave-policy/v1.pdf', encode(digest('leave-policy-v1', 'sha256'), 'hex'), 'ready'),
-    ('81000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000003', 1, 'northstar-labs/documents/engineering-architecture-overview/v1.pdf', encode(digest('engineering-architecture-overview-v1', 'sha256'), 'hex'), 'ready'),
-    ('81000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000004', 1, 'northstar-labs/documents/salary-bands-2026/v1.pdf', encode(digest('salary-bands-2026-v1', 'sha256'), 'hex'), 'ready'),
-    ('81000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000005', 1, 'northstar-labs/documents/legal-contract/v1.pdf', encode(digest('legal-contract-v1', 'sha256'), 'hex'), 'ready'),
-    ('81000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000006', 1, 'northstar-labs/documents/malicious-prompt-injection-test-document/v1.pdf', encode(digest('malicious-prompt-injection-test-document-v1', 'sha256'), 'hex'), 'quarantined')
+insert into document_versions (id, organization_id, document_id, version_number, storage_key, sha256, original_filename, mime_type, file_size_bytes, status) values
+    ('81000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', 1, 'northstar-labs/documents/employee-handbook/v1.pdf', encode(digest('employee-handbook-v1', 'sha256'), 'hex'), 'employee-handbook.pdf', 'application/pdf', 245000, 'ready'),
+    ('81000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000002', 1, 'northstar-labs/documents/leave-policy/v1.pdf', encode(digest('leave-policy-v1', 'sha256'), 'hex'), 'leave-policy.pdf', 'application/pdf', 98000, 'ready'),
+    ('81000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000003', 1, 'northstar-labs/documents/engineering-architecture-overview/v1.pdf', encode(digest('engineering-architecture-overview-v1', 'sha256'), 'hex'), 'engineering-architecture-overview.pdf', 'application/pdf', 512000, 'ready'),
+    ('81000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000004', 1, 'northstar-labs/documents/salary-bands-2026/v1.pdf', encode(digest('salary-bands-2026-v1', 'sha256'), 'hex'), 'salary-bands-2026.pdf', 'application/pdf', 64000, 'ready'),
+    ('81000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000005', 1, 'northstar-labs/documents/legal-contract/v1.pdf', encode(digest('legal-contract-v1', 'sha256'), 'hex'), 'legal-contract.pdf', 'application/pdf', 187000, 'ready'),
+    ('81000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000006', 1, 'northstar-labs/documents/malicious-prompt-injection-test-document/v1.pdf', encode(digest('malicious-prompt-injection-test-document-v1', 'sha256'), 'hex'), 'malicious-prompt-injection-test-document.pdf', 'application/pdf', 15000, 'quarantined')
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
