@@ -80,4 +80,6 @@ Prerequisites: Node.js 20.9+, Python 3.11+, and optionally Docker for the future
 
    `GET /health/db` confirms the API can reach PostgreSQL via `DATABASE_URL`. No schema/migrations are applied by the app itself yet, and no Supabase/Auth/Storage services are configured at this phase.
 
+5. `GET /v1/me` resolves the caller's organization membership from temporary development headers (`X-Dev-User-Email`, `X-Dev-Organization-Slug`) matched against seeded `profiles`/`organization_memberships`. This is a placeholder only — it will be replaced by verified Supabase JWT authentication (`docs/SECURITY_MODEL.md`) and must never be used outside local development.
+
 Never commit secrets, service-role keys, private documents, extraction output, or production data.

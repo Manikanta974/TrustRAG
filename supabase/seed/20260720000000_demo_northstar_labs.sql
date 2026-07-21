@@ -13,8 +13,8 @@ begin;
 -- Organization
 -- ---------------------------------------------------------------------------
 
-insert into organizations (id, name, status)
-values ('10000000-0000-0000-0000-000000000001', 'Northstar Labs', 'active')
+insert into organizations (id, name, slug, status)
+values ('10000000-0000-0000-0000-000000000001', 'Northstar Labs', 'northstar-labs', 'active')
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
