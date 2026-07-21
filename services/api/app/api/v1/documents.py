@@ -19,6 +19,8 @@ from app.services.documents import (
     DocumentIngestConflictError,
     DocumentNotFoundError,
     InvalidIngestContentError,
+    PromptInjectionDetectedError,
+    SensitiveDataBlockedError,
     check_document_access,
     create_document,
     ingest_text,
@@ -92,3 +94,11 @@ def ingest_text_endpoint(
         raise HTTPException(status_code=409, detail=exc.reason) from exc
     except InvalidIngestContentError as exc:
         raise HTTPException(status_code=422, detail="content must not be empty") from exc
+    except PromptInjectionDetectedError as exc:
+        raise HTTPException(
+            status_code=422, detail="content blocked: possible prompt injection"
+        ) from exc
+    except SensitiveDataBlockedError as exc:
+        raise HTTPException(
+            status_code=422, detail="content blocked: high-confidence secret detected"
+        ) from exc
