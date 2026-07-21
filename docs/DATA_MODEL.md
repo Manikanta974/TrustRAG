@@ -1,25 +1,29 @@
 # TrustRAG data model
 
-PostgreSQL is the system of record. All application tables include `tenant_id`, UUID primary keys, UTC `created_at`/`updated_at`, and foreign keys constrained to the same tenant where practical. Enable pgvector for chunk embeddings.
+PostgreSQL is the system of record. All application tables include `organization_id`, UUID primary keys, UTC `created_at`/`updated_at`, and foreign keys constrained to the same organization where practical. Enable pgvector for chunk embeddings.
 
 ## Core entities
 
 | Entity | Key fields | Notes |
 | --- | --- | --- |
-| `tenants` | `id`, `name`, `status` | Organization boundary |
-| `users` | `id`, `tenant_id`, `supabase_user_id`, `email`, `status` | Maps verified identity to application tenant |
-| `roles` | `id`, `tenant_id`, `name` | e.g. employee, manager, security_admin, platform_admin |
-| `user_roles` | `user_id`, `role_id` | Many-to-many, effective-dated if required |
-| `departments` | `id`, `tenant_id`, `name` | Department access principal |
-| `department_memberships` | `user_id`, `department_id` | Active membership is required for a grant |
-| `documents` | `id`, `tenant_id`, `owner_user_id`, `title`, `status` | Logical document across versions |
-| `document_versions` | `id`, `document_id`, `version_number`, `storage_key`, `sha256`, `status` | Immutable upload/extraction lifecycle |
-| `document_access_grants` | `document_id`, `principal_type`, `principal_id`, `permission` | `principal_type`: user, department, role; first permission is `read` |
-| `document_chunks` | `id`, `tenant_id`, `document_version_id`, `content`, `embedding`, `page_number`, `start_offset`, `end_offset` | Only ready versions are searched |
-| `security_findings` | `id`, `tenant_id`, `resource_type`, `resource_id`, `detector`, `severity`, `reason_code`, `status` | Never store detected secret plaintext |
-| `audit_events` | `id`, `tenant_id`, `actor_user_id`, `action`, `resource`, `decision`, `metadata`, `occurred_at` | Append-only operational record |
-| `question_requests` | `id`, `tenant_id`, `user_id`, `question_hash`, `outcome`, `model_config` | Store raw text only under approved retention policy |
-| `answer_citations` | `question_request_id`, `chunk_id`, `claim_index` | Immutable answer provenance |
+| `organizations` | `id`, `name`, `status` | Organization boundary (tenant) |
+| `profiles` | `id`, `organization_id`, `supabase_user_id`, `email`, `status` | Maps verified identity to application organization |
+| `organization_roles` | `id`, `organization_id`, `name`, `display_name`, `description` | Per-organization role catalog; also a document_acl principal_type target |
+| `organization_memberships` | `id`, `organization_id`, `profile_id`, `role_id`, `status` | Role grant, referencing `organization_roles` |
+| `departments` | `id`, `organization_id`, `name` | Department access principal |
+| `department_memberships` | `id`, `organization_id`, `department_id`, `profile_id`, `status` | Active membership is required for a grant |
+| `groups` | `id`, `organization_id`, `name` | Ad-hoc access principal distinct from department/role grants |
+| `group_members` | `id`, `organization_id`, `group_id`, `profile_id` | Group membership |
+| `documents` | `id`, `organization_id`, `owner_profile_id`, `title`, `status`, `classification` | Logical document across versions |
+| `document_versions` | `id`, `organization_id`, `document_id`, `version_number`, `storage_key`, `sha256`, `status` | Immutable upload/extraction lifecycle |
+| `document_acl` | `id`, `organization_id`, `document_id`, `principal_type`, `principal_id`, `permission` | `principal_type`: user, department, group, role; `principal_id` references `profiles`/`departments`/`groups`/`organization_roles` accordingly; first permission is `read` |
+| `document_chunks` | `id`, `organization_id`, `document_version_id`, `content`, `embedding`, `embedding_model`, `embedding_version`, `page_number`, `start_offset`, `end_offset` | Only ready versions are searched |
+| `conversations` | `id`, `organization_id`, `profile_id`, `title` | Groups related question/answer turns |
+| `messages` | `id`, `organization_id`, `conversation_id`, `role`, `content` | `role`: user, assistant, system |
+| `query_runs` | `id`, `organization_id`, `profile_id`, `conversation_id`, `question_hash`, `outcome`, `model_config` | Store raw text only under approved retention policy |
+| `query_sources` | `id`, `organization_id`, `query_run_id`, `chunk_id`, `claim_index` | Immutable answer provenance |
+| `security_events` | `id`, `organization_id`, `resource_type`, `resource_id`, `detector`, `severity`, `reason_code`, `status` | Never store detected secret plaintext |
+| `audit_events` | `id`, `organization_id`, `actor_profile_id`, `action`, `resource_type`, `resource_id`, `decision`, `policy_version`, `metadata`, `occurred_at` | Append-only operational record |
 
 ## Required statuses
 
@@ -32,13 +36,13 @@ Only versions with `ready` status are eligible for retrieval. `documents.status`
 At retrieval time, derive principals from the authenticated user, then apply all predicates:
 
 ```sql
-chunk.tenant_id = :tenant_id
+chunk.organization_id = :organization_id
 AND document.status = 'active'
 AND version.status = 'ready'
-AND EXISTS (matching active user, department, role, or owner grant)
+AND EXISTS (matching active user, department, group, role, or owner grant)
 ```
 
-Apply these filters before vector ranking. Revalidate returned IDs in application code. Use indexes on tenant/status/version joins and an appropriate pgvector index after measuring recall/latency. Never use a global nearest-neighbor query followed only by client-side filtering.
+Apply these filters before vector ranking. Revalidate returned IDs in application code. Use indexes on organization/status/version joins and an appropriate pgvector index after measuring recall/latency. Never use a global nearest-neighbor query followed only by client-side filtering.
 
 ## Deletion and retention
 
