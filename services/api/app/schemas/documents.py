@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field, field_validator
 ALLOWED_MIME_TYPES = {"application/pdf", "text/plain", "text/markdown"}
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
+TEXT_INGESTIBLE_MIME_TYPES = {"text/plain", "text/markdown"}
+MAX_INGEST_CONTENT_CHARS = 2_000_000
+CHUNK_WORDS = 750
+
 Classification = Literal["public", "internal", "confidential", "restricted"]
 
 
@@ -60,3 +64,14 @@ class DocumentCreateResponse(BaseModel):
     version_id: UUID
     version_number: int
     version_status: str
+
+
+class IngestTextRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=MAX_INGEST_CONTENT_CHARS)
+
+
+class IngestTextResponse(BaseModel):
+    document_id: UUID
+    version_id: UUID
+    version_status: str
+    chunk_count: int

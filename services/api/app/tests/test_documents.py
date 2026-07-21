@@ -38,16 +38,19 @@ def _headers(email: str) -> dict[str, str]:
 
 
 def test_admin_sees_owned_and_role_granted_documents() -> None:
+    # Uses issubset (not ==): other tests in this session create additional
+    # 'ready' documents owned/ACL-granted to admin/engineer in the same
+    # persistent database, so an exact-set match is not reliable here. The
+    # seed-derived documents must always be present; the seed-derived
+    # exclusions must never appear, regardless of what else exists.
     response = _request("GET", "/v1/documents", headers=_headers("admin@northstarlabs.demo"))
 
     assert response.status_code == 200
     document_ids = {doc["id"] for doc in response.json()}
-    assert document_ids == {
-        EMPLOYEE_HANDBOOK_ID,
-        LEAVE_POLICY_ID,
-        SALARY_BANDS_ID,
-        LEGAL_CONTRACT_ID,
-    }
+    expected_ids = {EMPLOYEE_HANDBOOK_ID, LEAVE_POLICY_ID, SALARY_BANDS_ID, LEGAL_CONTRACT_ID}
+    assert expected_ids <= document_ids
+    assert ENGINEERING_ARCHITECTURE_ID not in document_ids
+    assert QUARANTINED_DOC_ID not in document_ids
 
 
 def test_engineer_sees_engineering_accessible_documents() -> None:
@@ -55,7 +58,10 @@ def test_engineer_sees_engineering_accessible_documents() -> None:
 
     assert response.status_code == 200
     document_ids = {doc["id"] for doc in response.json()}
-    assert document_ids == {EMPLOYEE_HANDBOOK_ID, LEAVE_POLICY_ID, ENGINEERING_ARCHITECTURE_ID}
+    assert {EMPLOYEE_HANDBOOK_ID, LEAVE_POLICY_ID, ENGINEERING_ARCHITECTURE_ID} <= document_ids
+    assert SALARY_BANDS_ID not in document_ids
+    assert LEGAL_CONTRACT_ID not in document_ids
+    assert QUARANTINED_DOC_ID not in document_ids
 
 
 def test_intern_cannot_see_restricted_documents() -> None:
@@ -270,3 +276,160 @@ def test_newly_created_document_not_yet_visible_in_list_or_access() -> None:
     body = access_response.json()
     assert body["allowed"] is False
     assert body["reason"] == "no_ready_version"
+
+
+def _create_document(email: str, **overrides: object) -> str:
+    response = _request(
+        "POST",
+        "/v1/documents",
+        headers=_headers(email),
+        json=_valid_create_payload(**overrides),
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_ingest_txt_creates_chunks_and_marks_version_ready() -> None:
+    document_id = _create_document(
+        "admin@northstarlabs.demo",
+        title="Onboarding Notes TXT",
+        original_filename="onboarding-notes.txt",
+        mime_type="text/plain",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("admin@northstarlabs.demo"),
+        json={"content": "Welcome to Northstar Labs. " * 50},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["version_status"] == "ready"
+    assert body["chunk_count"] >= 1
+
+
+def test_ingest_markdown_creates_chunks_and_marks_version_ready() -> None:
+    document_id = _create_document(
+        "admin@northstarlabs.demo",
+        title="Runbook MD",
+        original_filename="runbook.md",
+        mime_type="text/markdown",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("admin@northstarlabs.demo"),
+        json={"content": "# Runbook\n\nStep one. Step two. Step three."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["version_status"] == "ready"
+    assert body["chunk_count"] >= 1
+
+
+def test_ingest_rejects_empty_content() -> None:
+    document_id = _create_document(
+        "admin@northstarlabs.demo",
+        title="Empty Content Doc",
+        original_filename="empty.txt",
+        mime_type="text/plain",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("admin@northstarlabs.demo"),
+        json={"content": "   \n  "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_ingest_rejects_wrong_mime_type() -> None:
+    document_id = _create_document(
+        "admin@northstarlabs.demo",
+        title="PDF Only Doc",
+        original_filename="handbook.pdf",
+        mime_type="application/pdf",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("admin@northstarlabs.demo"),
+        json={"content": "Some text content."},
+    )
+
+    assert response.status_code == 409
+
+
+def test_ingest_rejects_unauthorized_user() -> None:
+    document_id = _create_document(
+        "engineer@northstarlabs.demo",
+        title="Engineer-Owned Notes",
+        original_filename="notes.txt",
+        mime_type="text/plain",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("intern@northstarlabs.demo"),
+        json={"content": "Some text content."},
+    )
+
+    assert response.status_code == 403
+
+
+def test_ingest_rejects_already_ready_version() -> None:
+    response = _request(
+        "POST",
+        f"/v1/documents/{SALARY_BANDS_ID}/ingest-text",
+        headers=_headers("admin@northstarlabs.demo"),
+        json={"content": "Attempted re-ingestion."},
+    )
+
+    assert response.status_code == 409
+
+
+def test_ingest_requires_dev_headers() -> None:
+    document_id = _create_document(
+        "admin@northstarlabs.demo",
+        title="Headerless Attempt Doc",
+        original_filename="notes.txt",
+        mime_type="text/plain",
+    )
+
+    response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        json={"content": "Some text content."},
+    )
+
+    assert response.status_code == 401
+
+
+def test_document_appears_in_list_after_successful_ingestion() -> None:
+    document_id = _create_document(
+        "engineer@northstarlabs.demo",
+        title="Now Visible Runbook",
+        original_filename="runbook.txt",
+        mime_type="text/plain",
+    )
+
+    ingest_response = _request(
+        "POST",
+        f"/v1/documents/{document_id}/ingest-text",
+        headers=_headers("engineer@northstarlabs.demo"),
+        json={"content": "Deployment steps for the platform."},
+    )
+    assert ingest_response.status_code == 200
+
+    list_response = _request(
+        "GET", "/v1/documents", headers=_headers("engineer@northstarlabs.demo")
+    )
+    assert document_id in {doc["id"] for doc in list_response.json()}
