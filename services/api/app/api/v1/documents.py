@@ -9,10 +9,21 @@ from app.schemas.documents import (
     DocumentCreateRequest,
     DocumentCreateResponse,
     DocumentSummary,
+    IngestTextRequest,
+    IngestTextResponse,
 )
 from app.schemas.membership import CurrentMembership
 from app.services.auth import get_current_membership
-from app.services.documents import check_document_access, create_document, list_accessible_documents
+from app.services.documents import (
+    DocumentAccessDeniedError,
+    DocumentIngestConflictError,
+    DocumentNotFoundError,
+    InvalidIngestContentError,
+    check_document_access,
+    create_document,
+    ingest_text,
+    list_accessible_documents,
+)
 
 router = APIRouter()
 
@@ -56,3 +67,28 @@ def get_document_access(
     if decision is None:
         raise HTTPException(status_code=404, detail="document not found")
     return decision
+
+
+@router.post(
+    "/documents/{document_id}/ingest-text",
+    response_model=IngestTextResponse,
+    tags=["documents"],
+)
+def ingest_text_endpoint(
+    document_id: UUID,
+    payload: IngestTextRequest,
+    membership: CurrentMembership = Depends(get_current_membership),
+    db: Session = Depends(get_db),
+) -> IngestTextResponse:
+    try:
+        return ingest_text(db, membership, document_id, payload.content)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="document not found") from exc
+    except DocumentAccessDeniedError as exc:
+        raise HTTPException(
+            status_code=403, detail="not authorized to manage this document"
+        ) from exc
+    except DocumentIngestConflictError as exc:
+        raise HTTPException(status_code=409, detail=exc.reason) from exc
+    except InvalidIngestContentError as exc:
+        raise HTTPException(status_code=422, detail="content must not be empty") from exc
