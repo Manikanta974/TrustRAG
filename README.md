@@ -70,13 +70,14 @@ Prerequisites: Node.js 20.9+, Python 3.11+, and optionally Docker for the future
 
    Check `http://localhost:8000/health`; it returns `{"status":"ok","service":"trustrag-api"}`.
 
-4. Run the current backend checks:
+4. Start local PostgreSQL, then run the current backend checks:
 
    ```bash
+   docker compose up -d postgres
    python -m pytest
    python -m ruff check app
    ```
 
-`docker compose up postgres` starts an empty local pgvector-enabled PostgreSQL placeholder. No app service uses it yet, and no Supabase/Auth/Storage services are configured at this phase.
+   `GET /health/db` confirms the API can reach PostgreSQL via `DATABASE_URL`. No schema/migrations are applied by the app itself yet, and no Supabase/Auth/Storage services are configured at this phase.
 
 Never commit secrets, service-role keys, private documents, extraction output, or production data.
